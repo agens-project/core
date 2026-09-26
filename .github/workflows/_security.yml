@@ -1,0 +1,48 @@
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# _security.yml
+#
+# Performs dependency vulnerability scanning and secret scanning.
+#
+# Callers: development.yml, main.yml, nightly.yml, release.yml, weekly.yml
+# ─────────────────────────────────────────────────────────────────────────────
+name: "Security Audit (Reusable)"
+on:
+  workflow_call:
+permissions:
+  contents: read
+  security-events: write  # Upload SARIF to GitHub Security tab
+jobs:
+  secret-scan:
+    name: "Secret Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@8feb77b20aeb64366d106b08f2941287755c173b  # main
+        with:
+          path: ./
+  dependency-audit:
+    name: "Dependency Vulnerability Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - name: Set up toolchain
+        run: pip install pip-audit hatch
+      - name: Run dependency vulnerability scan
+        run: |
+          # Use hatch to export dependencies and run pip-audit
+          hatch dep show requirements > requirements.txt
+          pip-audit -r requirements.txt --output json -o audit.json
+      - name: Upload SCA results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sca-results-${{ github.run_id }}
+          path: audit.json
+          retention-days: 30
+          if-no-files-found: ignore
